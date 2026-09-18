@@ -1,0 +1,975 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Explorador automático de datos para CSV, XLSX y XLS." />
+  <title>Explorador automático de datos</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+
+  <style>
+    :root {
+      --bg: #f6f8fb;
+      --card: #ffffff;
+      --text: #1f2937;
+      --muted: #6b7280;
+      --line: #dfe5ee;
+      --accent: #2563eb;
+      --accent-soft: #eaf1ff;
+      --ok: #0f766e;
+      --warn: #b45309;
+      --danger: #b91c1c;
+      --shadow: 0 8px 24px rgba(31, 41, 55, .08);
+      --radius: 16px;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+    header {
+      background: linear-gradient(135deg, #111827, #1f3b68);
+      color: white;
+      padding: 28px 24px;
+    }
+    header .wrap, main {
+      max-width: 1500px;
+      margin: 0 auto;
+    }
+    h1 { margin: 0 0 8px; font-size: clamp(28px, 4vw, 44px); }
+    header p { margin: 0; max-width: 900px; color: #dbeafe; }
+    main { padding: 22px; }
+    .grid { display: grid; gap: 16px; }
+    .layout { grid-template-columns: 310px minmax(0,1fr); align-items: start; }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 18px;
+    }
+    .sidebar { position: sticky; top: 16px; }
+    .dropzone {
+      border: 2px dashed #93a4bd;
+      border-radius: 14px;
+      padding: 22px;
+      text-align: center;
+      background: #fbfdff;
+      cursor: pointer;
+    }
+    .dropzone.drag { border-color: var(--accent); background: var(--accent-soft); }
+    input[type="file"] { display:none; }
+    label, .label { font-weight: 650; font-size: 14px; }
+    select, input[type="number"], input[type="date"], input[type="text"] {
+      width: 100%;
+      margin-top: 6px;
+      border: 1px solid #cfd8e3;
+      border-radius: 10px;
+      padding: 9px 10px;
+      background: white;
+      color: var(--text);
+    }
+    button {
+      border: 0;
+      border-radius: 10px;
+      padding: 10px 14px;
+      cursor: pointer;
+      background: var(--accent);
+      color: white;
+      font-weight: 700;
+    }
+    button.secondary { background: #e8edf5; color: #263248; }
+    button.danger { background: #9f1239; }
+    button:disabled { opacity:.5; cursor:not-allowed; }
+    .stack > * + * { margin-top: 12px; }
+    .metrics { grid-template-columns: repeat(4, minmax(0,1fr)); }
+    .metric .n { font-size: 28px; font-weight: 800; }
+    .metric .t { color: var(--muted); font-size: 13px; }
+    .tabs { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px; }
+    .tab-btn { background:#eef2f7; color:#334155; }
+    .tab-btn.active { background:var(--accent); color:white; }
+    .tab-panel { display:none; }
+    .tab-panel.active { display:block; }
+    .notice {
+      border-left: 4px solid var(--accent);
+      background: #eff6ff;
+      padding: 12px 14px;
+      border-radius: 10px;
+    }
+    .notice.warn { border-color: var(--warn); background:#fff7ed; }
+    .notice.error { border-color: var(--danger); background:#fef2f2; }
+    .notice.ok { border-color: var(--ok); background:#ecfdf5; }
+    .table-wrap { overflow:auto; max-height: 600px; border:1px solid var(--line); border-radius:12px; }
+    table { border-collapse: collapse; width:100%; font-size: 13px; }
+    th, td { border-bottom:1px solid var(--line); padding:9px 10px; text-align:left; white-space:nowrap; }
+    th { position:sticky; top:0; background:#f8fafc; z-index:1; }
+    tr:hover td { background:#fafcff; }
+    .two { grid-template-columns: repeat(2, minmax(0,1fr)); }
+    .three { grid-template-columns: repeat(3, minmax(0,1fr)); }
+    .muted { color:var(--muted); }
+    .small { font-size:12px; }
+    .hidden { display:none !important; }
+    .pill { display:inline-block; border-radius:999px; padding:4px 8px; background:#eef2ff; font-size:12px; }
+    .chart { min-height: 420px; }
+    .filters-block { border-top:1px solid var(--line); padding-top:12px; }
+    .filter-item { padding:10px; border:1px solid var(--line); border-radius:10px; margin-top:8px; }
+    .checklist { max-height:180px; overflow:auto; border:1px solid var(--line); border-radius:10px; padding:8px; }
+    .checklist label { display:block; font-weight:500; margin:4px 0; }
+    .inline { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+    .pagination { display:flex; gap:8px; align-items:center; justify-content:flex-end; margin-top:12px; }
+    footer { max-width:1500px; margin:0 auto; padding:0 22px 28px; color:var(--muted); font-size:12px; }
+
+    @media (max-width: 1000px) {
+      .layout { grid-template-columns: 1fr; }
+      .sidebar { position:static; }
+      .metrics { grid-template-columns: repeat(2, minmax(0,1fr)); }
+      .two, .three { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 600px) {
+      main { padding:14px; }
+      .metrics { grid-template-columns: 1fr; }
+      .card { padding:14px; }
+    }
+  </style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <h1>📊 Explorador automático de datos</h1>
+    <p>Carga un archivo CSV, XLSX o XLS y obtén automáticamente información sobre su estructura, calidad, estadísticas, distribuciones, correlaciones y valores atípicos.</p>
+  </div>
+</header>
+
+<main>
+  <div class="grid layout">
+    <aside class="card sidebar stack">
+      <div>
+        <div id="dropzone" class="dropzone" tabindex="0" role="button" aria-label="Cargar archivo">
+          <strong>Arrastra tu archivo aquí</strong><br>
+          <span class="muted small">o haz clic para seleccionar</span><br><br>
+          <span class="pill">CSV</span> <span class="pill">XLSX</span> <span class="pill">XLS</span>
+        </div>
+        <input id="fileInput" type="file" accept=".csv,.xlsx,.xls" />
+      </div>
+
+      <div id="fileInfo" class="notice hidden"></div>
+
+      <div id="sheetBlock" class="hidden">
+        <label for="sheetSelect">Hoja de Excel</label>
+        <select id="sheetSelect"></select>
+      </div>
+
+      <div class="filters-block">
+        <div class="inline" style="justify-content:space-between;">
+          <strong>Filtros</strong>
+          <button id="resetFilters" class="secondary" type="button">Restablecer</button>
+        </div>
+        <div id="filtersContainer" class="stack small muted">Carga un archivo para habilitar filtros.</div>
+      </div>
+
+      <div class="notice warn small">
+        Los archivos se procesan localmente en este navegador. Evita cargar información personal, confidencial o sensible en equipos compartidos.
+      </div>
+    </aside>
+
+    <section class="stack">
+      <div id="welcome" class="card">
+        <h2>Bienvenida</h2>
+        <p>Esta aplicación funciona sin servidor y procesa los datos directamente en tu navegador.</p>
+        <div class="grid three">
+          <div class="notice"><strong>1. Cargar</strong><br><span class="small">CSV, XLSX o XLS.</span></div>
+          <div class="notice"><strong>2. Explorar</strong><br><span class="small">Calidad, estadísticas y gráficos.</span></div>
+          <div class="notice"><strong>3. Descargar</strong><br><span class="small">Datos filtrados y atípicos.</span></div>
+        </div>
+        <h3>Análisis disponibles</h3>
+        <p class="muted">Dimensiones, tipos de variables, duplicados, faltantes, estadísticas descriptivas, distribuciones, correlaciones, valores atípicos, filtros y tabla interactiva.</p>
+      </div>
+
+      <div id="app" class="hidden stack">
+        <div id="errorBox" class="notice error hidden"></div>
+
+        <div class="grid metrics">
+          <div class="card metric"><div class="t">Filas</div><div id="mRows" class="n">0</div></div>
+          <div class="card metric"><div class="t">Columnas</div><div id="mCols" class="n">0</div></div>
+          <div class="card metric"><div class="t">Duplicados</div><div id="mDup" class="n">0</div></div>
+          <div class="card metric"><div class="t">Celdas faltantes</div><div id="mMiss" class="n">0</div></div>
+        </div>
+
+        <div class="card">
+          <div class="tabs">
+            <button class="tab-btn active" data-tab="summary">Resumen y tipos</button>
+            <button class="tab-btn" data-tab="quality">Calidad de datos</button>
+            <button class="tab-btn" data-tab="stats">Estadísticas</button>
+            <button class="tab-btn" data-tab="dist">Distribuciones</button>
+            <button class="tab-btn" data-tab="corr">Correlaciones</button>
+            <button class="tab-btn" data-tab="outliers">Valores atípicos</button>
+            <button class="tab-btn" data-tab="data">Datos</button>
+          </div>
+
+          <div id="summary" class="tab-panel active">
+            <h2>Resumen y tipos</h2>
+            <div id="datasetSummary" class="notice"></div>
+            <h3>Tipos de variables</h3>
+            <div class="table-wrap"><table id="typesTable"></table></div>
+          </div>
+
+          <div id="quality" class="tab-panel">
+            <h2>Calidad de datos</h2>
+            <div class="grid two">
+              <div>
+                <h3>Valores faltantes</h3>
+                <div class="table-wrap"><table id="missingTable"></table></div>
+              </div>
+              <div id="missingChart" class="chart"></div>
+            </div>
+            <h3>Registros duplicados</h3>
+            <div id="dupMessage" class="notice"></div>
+            <div class="table-wrap"><table id="dupTable"></table></div>
+          </div>
+
+          <div id="stats" class="tab-panel">
+            <h2>Estadísticas descriptivas</h2>
+            <label for="statsMode">Tipo de variables</label>
+            <select id="statsMode" style="max-width:320px">
+              <option value="all">Todas</option>
+              <option value="numeric">Numéricas</option>
+              <option value="categorical">Categóricas / texto / booleanas</option>
+            </select>
+            <div class="table-wrap" style="margin-top:14px"><table id="statsTable"></table></div>
+          </div>
+
+          <div id="dist" class="tab-panel">
+            <h2>Distribuciones</h2>
+            <div class="grid two">
+              <div>
+                <label for="distColumn">Variable</label>
+                <select id="distColumn"></select>
+              </div>
+              <div id="binsBlock">
+                <label for="bins">Número de intervalos</label>
+                <input id="bins" type="number" min="5" max="100" value="20">
+              </div>
+            </div>
+            <div id="groupBlock" style="max-width:420px; margin-top:12px;">
+              <label for="boxGroup">Agrupar boxplot por</label>
+              <select id="boxGroup"><option value="">Sin agrupación</option></select>
+            </div>
+            <div id="distChart" class="chart"></div>
+            <div id="boxChart" class="chart"></div>
+          </div>
+
+          <div id="corr" class="tab-panel">
+            <h2>Correlaciones</h2>
+            <div class="grid two">
+              <div>
+                <label for="corrMethod">Método</label>
+                <select id="corrMethod">
+                  <option value="pearson">Pearson</option>
+                  <option value="spearman">Spearman</option>
+                </select>
+              </div>
+              <div>
+                <span class="label">Variables numéricas</span>
+                <div id="corrColumns" class="checklist"></div>
+              </div>
+            </div>
+            <div class="notice small" style="margin-top:12px;">Correlación no implica causalidad.</div>
+            <div id="corrChart" class="chart"></div>
+            <div class="table-wrap"><table id="corrTable"></table></div>
+          </div>
+
+          <div id="outliers" class="tab-panel">
+            <h2>Valores atípicos</h2>
+            <div class="grid two">
+              <div>
+                <span class="label">Variables numéricas</span>
+                <div id="outlierColumns" class="checklist"></div>
+              </div>
+              <div>
+                <label for="iqrFactor">Factor IQR</label>
+                <input id="iqrFactor" type="number" min="1" max="3" step="0.1" value="1.5">
+                <button id="runOutliers" style="margin-top:12px;">Calcular atípicos</button>
+              </div>
+            </div>
+            <div id="outlierSummary" class="notice" style="margin-top:12px;"></div>
+            <div id="outlierChart" class="chart"></div>
+            <div class="table-wrap"><table id="outlierTable"></table></div>
+            <button id="downloadOutliers" style="margin-top:12px;">Descargar valores atípicos</button>
+          </div>
+
+          <div id="data" class="tab-panel">
+            <h2>Datos</h2>
+            <div class="grid three">
+              <div>
+                <label for="searchData">Buscar</label>
+                <input id="searchData" type="text" placeholder="Buscar en las filas visibles">
+              </div>
+              <div>
+                <label for="pageSize">Filas por página</label>
+                <select id="pageSize">
+                  <option>25</option>
+                  <option selected>50</option>
+                  <option>100</option>
+                </select>
+              </div>
+              <div>
+                <span class="label">Columnas visibles</span>
+                <div id="visibleColumns" class="checklist"></div>
+              </div>
+            </div>
+            <div class="inline" style="justify-content:space-between; margin:14px 0;">
+              <div id="tableCount" class="muted small"></div>
+              <button id="downloadFiltered">Descargar datos filtrados</button>
+            </div>
+            <div class="table-wrap"><table id="dataTable"></table></div>
+            <div class="pagination">
+              <button id="prevPage" class="secondary">Anterior</button>
+              <span id="pageInfo"></span>
+              <button id="nextPage" class="secondary">Siguiente</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+</main>
+
+<footer>
+  Análisis exploratorio: no sustituye la interpretación profesional. Un valor atípico no necesariamente representa un error.
+</footer>
+
+<script>
+"use strict";
+
+const state = {
+  fileName: "",
+  workbook: null,
+  currentSheet: "",
+  originalData: [],
+  filteredData: [],
+  columns: [],
+  metadata: [],
+  filters: {},
+  outliers: [],
+  page: 1,
+  pageSize: 50,
+  sort: { column: null, dir: 1 }
+};
+
+const $ = id => document.getElementById(id);
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;").replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function isMissing(v) {
+  return v === null || v === undefined || (typeof v === "string" && v.trim() === "");
+}
+
+function normalizeRow(row, columns) {
+  const out = {};
+  for (const c of columns) out[c] = row[c] ?? null;
+  return out;
+}
+
+function cleanColumns(cols) {
+  const seen = {};
+  return cols.map((raw, i) => {
+    let c = String(raw ?? "").trim() || `Columna_${i+1}`;
+    if (seen[c] !== undefined) {
+      seen[c] += 1;
+      c = `${c}_${seen[c]}`;
+    } else seen[c] = 0;
+    return c;
+  });
+}
+
+function coerceNumber(v) {
+  if (typeof v === "number" && Number.isFinite(v)) return v;
+  if (typeof v !== "string") return NaN;
+  const s = v.trim();
+  if (!s) return NaN;
+  const normalized = s
+    .replace(/\s/g, "")
+    .replace(/(?<=\d)\.(?=\d{3}(\D|$))/g, "")
+    .replace(",", ".");
+  const n = Number(normalized);
+  return Number.isFinite(n) ? n : NaN;
+}
+
+function parseDateValue(v) {
+  if (v instanceof Date && !isNaN(v)) return v;
+  if (typeof v === "number") {
+    const parsed = XLSX.SSF.parse_date_code(v);
+    if (parsed) return new Date(parsed.y, parsed.m - 1, parsed.d, parsed.H || 0, parsed.M || 0, parsed.S || 0);
+  }
+  if (typeof v === "string" && v.trim()) {
+    const t = Date.parse(v);
+    if (!Number.isNaN(t)) return new Date(t);
+    const m = v.trim().match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+    if (m) return new Date(Number(m[3]), Number(m[2])-1, Number(m[1]));
+  }
+  return null;
+}
+
+function detectType(column, data) {
+  const vals = data.map(r => r[column]).filter(v => !isMissing(v));
+  if (!vals.length) return "Texto";
+
+  const name = column.toLowerCase();
+  const dateHint = /(fecha|date|año|year|mes|month)/.test(name);
+  const dateRate = vals.filter(v => parseDateValue(v) !== null).length / vals.length;
+  if ((dateHint && dateRate >= 0.5) || dateRate >= 0.9) return "Fecha/hora";
+
+  const boolWords = new Set(["true","false","sí","si","no","yes","0","1"]);
+  const boolRate = vals.filter(v => typeof v === "boolean" || boolWords.has(String(v).toLowerCase())).length / vals.length;
+  if (boolRate >= 0.95 && new Set(vals.map(v=>String(v).toLowerCase())).size <= 2) return "Booleana";
+
+  const numRate = vals.filter(v => Number.isFinite(coerceNumber(v))).length / vals.length;
+  if (numRate >= 0.9) return "Numérica";
+
+  const unique = new Set(vals.map(v => String(v))).size;
+  const ratio = unique / vals.length;
+  if (unique <= 30 || ratio <= 0.2) return "Categórica";
+  return "Texto";
+}
+
+function buildMetadata() {
+  state.metadata = state.columns.map(c => {
+    const vals = state.originalData.map(r => r[c]);
+    const nonNull = vals.filter(v => !isMissing(v));
+    return {
+      column: c,
+      type: detectType(c, state.originalData),
+      nonNull: nonNull.length,
+      missing: vals.length - nonNull.length,
+      unique: new Set(nonNull.map(v => String(v))).size
+    };
+  });
+}
+
+function getNumericColumns() {
+  return state.metadata.filter(m => m.type === "Numérica").map(m => m.column);
+}
+function getCategoricalColumns() {
+  return state.metadata.filter(m => ["Categórica","Texto","Booleana"].includes(m.type)).map(m => m.column);
+}
+function getDateColumns() {
+  return state.metadata.filter(m => m.type === "Fecha/hora").map(m => m.column);
+}
+
+function rowsToCsv(rows, columns) {
+  const q = s => {
+    const str = String(s ?? "");
+    return /[",\n\r;]/.test(str) ? `"${str.replace(/"/g,'""')}"` : str;
+  };
+  return "\uFEFF" + [columns.map(q).join(","), ...rows.map(r => columns.map(c => q(r[c])).join(","))].join("\r\n");
+}
+
+function downloadText(text, name, mime="text/csv;charset=utf-8;") {
+  const blob = new Blob([text], {type:mime});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+}
+
+async function loadFile(file) {
+  hideError();
+  if (!file) return;
+  const ext = file.name.split(".").pop().toLowerCase();
+  if (!["csv","xlsx","xls"].includes(ext)) return showError("Formato no permitido. Usa CSV, XLSX o XLS.");
+
+  state.fileName = file.name;
+  $("fileInfo").classList.remove("hidden");
+  $("fileInfo").innerHTML = `<strong>${escapeHtml(file.name)}</strong><br><span class="small">${(file.size/1024).toFixed(1)} KB</span>`;
+
+  try {
+    if (ext === "csv") {
+      $("sheetBlock").classList.add("hidden");
+      const text = await file.text();
+      Papa.parse(text, {
+        header: true,
+        skipEmptyLines: false,
+        dynamicTyping: false,
+        complete: res => {
+          if (res.errors?.length && !res.data?.length) return showError("No fue posible interpretar el archivo CSV.");
+          const fields = res.meta.fields || [];
+          const cols = cleanColumns(fields);
+          const mapping = Object.fromEntries(fields.map((f,i)=>[f, cols[i]]));
+          const rows = (res.data || []).map(r => {
+            const o = {};
+            for (const f of fields) o[mapping[f]] = r[f];
+            return o;
+          }).filter(r => Object.values(r).some(v => !isMissing(v)));
+          setDataset(rows, cols);
+        },
+        error: () => showError("No fue posible leer el archivo CSV.")
+      });
+    } else {
+      const buffer = await file.arrayBuffer();
+      state.workbook = XLSX.read(buffer, {type:"array", cellDates:true});
+      const names = state.workbook.SheetNames || [];
+      if (!names.length) return showError("El libro de Excel no contiene hojas.");
+      $("sheetBlock").classList.remove("hidden");
+      $("sheetSelect").innerHTML = names.map(n=>`<option>${escapeHtml(n)}</option>`).join("");
+      loadSheet(names[0]);
+    }
+  } catch (e) {
+    console.error(e);
+    showError("No fue posible procesar el archivo. Verifica que no esté dañado.");
+  }
+}
+
+function loadSheet(name) {
+  try {
+    state.currentSheet = name;
+    const ws = state.workbook.Sheets[name];
+    const matrix = XLSX.utils.sheet_to_json(ws, {header:1, defval:null, raw:false});
+    if (!matrix.length) return showError("La hoja seleccionada está vacía.");
+    const cols = cleanColumns(matrix[0]);
+    const rows = matrix.slice(1).map(arr => {
+      const o = {};
+      cols.forEach((c,i)=>o[c]=arr[i] ?? null);
+      return o;
+    }).filter(r => Object.values(r).some(v => !isMissing(v)));
+    setDataset(rows, cols);
+  } catch(e) {
+    console.error(e); showError("No fue posible leer la hoja seleccionada.");
+  }
+}
+
+function setDataset(rows, cols) {
+  if (!rows.length || !cols.length) return showError("El archivo no contiene datos utilizables.");
+  state.columns = cols;
+  state.originalData = rows.map(r => normalizeRow(r, cols));
+  state.filteredData = [...state.originalData];
+  state.filters = {};
+  state.outliers = [];
+  state.page = 1;
+  buildMetadata();
+  $("welcome").classList.add("hidden");
+  $("app").classList.remove("hidden");
+  buildFilters();
+  buildSelectors();
+  renderAll();
+}
+
+function showError(msg) {
+  $("errorBox").textContent = msg;
+  $("errorBox").classList.remove("hidden");
+}
+function hideError() { $("errorBox").classList.add("hidden"); }
+
+function buildFilters() {
+  const box = $("filtersContainer");
+  box.innerHTML = "";
+  const cats = getCategoricalColumns();
+  const nums = getNumericColumns();
+  const dates = getDateColumns();
+
+  if (!cats.length && !nums.length && !dates.length) {
+    box.textContent = "No se detectaron variables filtrables.";
+    return;
+  }
+
+  for (const c of cats) {
+    const unique = [...new Set(state.originalData.map(r => isMissing(r[c]) ? "(Faltante)" : String(r[c])))].slice(0,200);
+    const d = document.createElement("div"); d.className="filter-item";
+    d.innerHTML = `<strong>${escapeHtml(c)}</strong><div class="checklist" data-filter-cat="${escapeHtml(c)}">
+      ${unique.map(v => `<label><input type="checkbox" value="${escapeHtml(v)}"> ${escapeHtml(v)}</label>`).join("")}
+    </div>`;
+    box.appendChild(d);
+  }
+  for (const c of nums) {
+    const vals = state.originalData.map(r=>coerceNumber(r[c])).filter(Number.isFinite);
+    if (!vals.length) continue;
+    const min = Math.min(...vals), max = Math.max(...vals);
+    const d = document.createElement("div"); d.className="filter-item";
+    d.innerHTML = `<strong>${escapeHtml(c)}</strong>
+      <div class="grid two">
+        <label>Mín<input data-num-min="${escapeHtml(c)}" type="number" value="${min}"></label>
+        <label>Máx<input data-num-max="${escapeHtml(c)}" type="number" value="${max}"></label>
+      </div>
+      <label><input data-num-keep="${escapeHtml(c)}" type="checkbox" checked> Conservar faltantes</label>`;
+    box.appendChild(d);
+  }
+  for (const c of dates) {
+    const vals = state.originalData.map(r=>parseDateValue(r[c])).filter(Boolean).sort((a,b)=>a-b);
+    if (!vals.length) continue;
+    const iso = d => d.toISOString().slice(0,10);
+    const d = document.createElement("div"); d.className="filter-item";
+    d.innerHTML = `<strong>${escapeHtml(c)}</strong>
+      <label>Desde<input data-date-min="${escapeHtml(c)}" type="date" value="${iso(vals[0])}"></label>
+      <label>Hasta<input data-date-max="${escapeHtml(c)}" type="date" value="${iso(vals[vals.length-1])}"></label>
+      <label><input data-date-keep="${escapeHtml(c)}" type="checkbox" checked> Conservar faltantes</label>`;
+    box.appendChild(d);
+  }
+  box.querySelectorAll("input").forEach(el => el.addEventListener("change", applyFilters));
+}
+
+function applyFilters() {
+  let rows = [...state.originalData];
+
+  document.querySelectorAll("[data-filter-cat]").forEach(list => {
+    const c = list.getAttribute("data-filter-cat");
+    const selected = [...list.querySelectorAll("input:checked")].map(i=>i.value);
+    if (selected.length) {
+      rows = rows.filter(r => selected.includes(isMissing(r[c]) ? "(Faltante)" : String(r[c])));
+    }
+  });
+
+  for (const c of getNumericColumns()) {
+    const minEl = document.querySelector(`[data-num-min="${CSS.escape(c)}"]`);
+    const maxEl = document.querySelector(`[data-num-max="${CSS.escape(c)}"]`);
+    if (!minEl || !maxEl) continue;
+    const min = Number(minEl.value), max = Number(maxEl.value);
+    const keep = document.querySelector(`[data-num-keep="${CSS.escape(c)}"]`)?.checked;
+    rows = rows.filter(r => {
+      if (isMissing(r[c])) return !!keep;
+      const n = coerceNumber(r[c]); return Number.isFinite(n) && n >= min && n <= max;
+    });
+  }
+
+  for (const c of getDateColumns()) {
+    const minEl = document.querySelector(`[data-date-min="${CSS.escape(c)}"]`);
+    const maxEl = document.querySelector(`[data-date-max="${CSS.escape(c)}"]`);
+    if (!minEl || !maxEl) continue;
+    const min = new Date(minEl.value+"T00:00:00"), max = new Date(maxEl.value+"T23:59:59");
+    const keep = document.querySelector(`[data-date-keep="${CSS.escape(c)}"]`)?.checked;
+    rows = rows.filter(r => {
+      const d = parseDateValue(r[c]);
+      if (!d) return !!keep;
+      return d >= min && d <= max;
+    });
+  }
+
+  state.filteredData = rows;
+  state.page = 1;
+  renderAll();
+}
+
+function renderAll() {
+  renderMetrics();
+  renderSummary();
+  renderTypes();
+  renderMissing();
+  renderDuplicates();
+  renderStats();
+  renderDistribution();
+  renderCorrelation();
+  renderDataTable();
+}
+
+function renderMetrics() {
+  const d = state.filteredData;
+  $("mRows").textContent = d.length.toLocaleString("es-CO");
+  $("mCols").textContent = state.columns.length.toLocaleString("es-CO");
+  $("mDup").textContent = getDuplicateInfo(d).count.toLocaleString("es-CO");
+  $("mMiss").textContent = d.reduce((acc,r)=>acc+state.columns.filter(c=>isMissing(r[c])).length,0).toLocaleString("es-CO");
+}
+
+function renderSummary() {
+  const pct = state.originalData.length ? (100*state.filteredData.length/state.originalData.length).toFixed(1) : "0";
+  $("datasetSummary").innerHTML =
+    `<strong>Archivo:</strong> ${escapeHtml(state.fileName)} ${state.currentSheet ? `· <strong>Hoja:</strong> ${escapeHtml(state.currentSheet)}` : ""}<br>
+     <strong>Filas originales:</strong> ${state.originalData.length.toLocaleString("es-CO")} ·
+     <strong>Filas visibles:</strong> ${state.filteredData.length.toLocaleString("es-CO")} (${pct}%) ·
+     <strong>Columnas:</strong> ${state.columns.length}`;
+}
+
+function renderTypes() {
+  const data = state.filteredData;
+  const rows = state.columns.map(c => {
+    const meta = state.metadata.find(m=>m.column===c);
+    const vals = data.map(r=>r[c]);
+    const nn = vals.filter(v=>!isMissing(v));
+    return [c, typeof nn[0] === "undefined" ? "vacío" : typeof nn[0], meta.type, nn.length, vals.length-nn.length, new Set(nn.map(v=>String(v))).size];
+  });
+  renderTable($("typesTable"), ["Variable","Tipo JS","Tipo analítico","No nulos","Faltantes","Únicos"], rows);
+}
+
+function renderMissing() {
+  const n = state.filteredData.length || 1;
+  const rows = state.columns.map(c => {
+    const miss = state.filteredData.filter(r=>isMissing(r[c])).length;
+    return [c, miss, 100*miss/n];
+  }).sort((a,b)=>b[2]-a[2]);
+  renderTable($("missingTable"), ["Variable","Faltantes","% faltante"], rows.map(r=>[r[0],r[1],r[2].toFixed(2)+"%"]));
+  Plotly.newPlot("missingChart", [{
+    type:"bar", x:rows.map(r=>r[0]), y:rows.map(r=>r[2]), hovertemplate:"%{x}<br>% faltante: %{y:.2f}%<extra></extra>"
+  }], {title:"Porcentaje de valores faltantes", margin:{t:50,l:50,r:20,b:120}, yaxis:{range:[0,100]}}, {responsive:true, displaylogo:false});
+}
+
+function stableRowKey(r) {
+  return JSON.stringify(state.columns.map(c => {
+    const v = r[c];
+    if (v instanceof Date) return v.toISOString();
+    return v;
+  }));
+}
+function getDuplicateInfo(data) {
+  const counts = new Map();
+  data.forEach(r => counts.set(stableRowKey(r), (counts.get(stableRowKey(r))||0)+1));
+  const dupRows = data.filter(r => counts.get(stableRowKey(r)) > 1);
+  const count = data.filter((r,i,arr) => {
+    const key=stableRowKey(r);
+    const first = arr.findIndex(x=>stableRowKey(x)===key);
+    return i !== first;
+  }).length;
+  return {count, dupRows};
+}
+function renderDuplicates() {
+  const info = getDuplicateInfo(state.filteredData);
+  $("dupMessage").textContent = info.count
+    ? `Se encontraron ${info.count.toLocaleString("es-CO")} registros duplicados adicionales y ${info.dupRows.length.toLocaleString("es-CO")} filas involucradas.`
+    : "No se encontraron registros completamente duplicados.";
+  const rows = info.dupRows.slice(0,500).map(r=>state.columns.map(c=>r[c]));
+  renderTable($("dupTable"), state.columns, rows);
+}
+
+function quantile(values, q) {
+  const a = values.filter(Number.isFinite).slice().sort((x,y)=>x-y);
+  if (!a.length) return NaN;
+  const pos=(a.length-1)*q, base=Math.floor(pos), rest=pos-base;
+  return a[base+1] !== undefined ? a[base]+rest*(a[base+1]-a[base]) : a[base];
+}
+function mean(a) { return a.length ? a.reduce((x,y)=>x+y,0)/a.length : NaN; }
+function std(a) {
+  if (a.length < 2) return NaN;
+  const m=mean(a); return Math.sqrt(a.reduce((s,x)=>s+(x-m)**2,0)/(a.length-1));
+}
+function renderStats() {
+  const mode = $("statsMode").value;
+  const rows = [];
+  for (const m of state.metadata) {
+    const vals = state.filteredData.map(r=>r[m.column]).filter(v=>!isMissing(v));
+    if (m.type === "Numérica" && mode !== "categorical") {
+      const a = vals.map(coerceNumber).filter(Number.isFinite);
+      rows.push([m.column,"Numérica",a.length,fmt(mean(a)),fmt(std(a)),fmt(Math.min(...a)),fmt(quantile(a,.25)),fmt(quantile(a,.5)),fmt(quantile(a,.75)),fmt(Math.max(...a))]);
+    } else if (["Categórica","Texto","Booleana"].includes(m.type) && mode !== "numeric") {
+      const counts = {};
+      vals.forEach(v=>counts[String(v)]=(counts[String(v)]||0)+1);
+      const top = Object.entries(counts).sort((a,b)=>b[1]-a[1])[0] || ["",0];
+      rows.push([m.column,m.type,vals.length,new Set(vals.map(String)).size,top[0],top[1],"","","",""]);
+    }
+  }
+  renderTable($("statsTable"),
+    ["Variable","Tipo","Conteo","Media / Únicos","Desv. / Moda","Mín / Frec. moda","Q1","Mediana","Q3","Máximo"], rows);
+}
+function fmt(n){ return Number.isFinite(n) ? Number(n.toFixed(4)) : ""; }
+
+function buildSelectors() {
+  $("distColumn").innerHTML = state.columns.map(c=>`<option>${escapeHtml(c)}</option>`).join("");
+  $("boxGroup").innerHTML = `<option value="">Sin agrupación</option>` + getCategoricalColumns().map(c=>`<option>${escapeHtml(c)}</option>`).join("");
+
+  const nums = getNumericColumns();
+  $("corrColumns").innerHTML = nums.map(c=>`<label><input type="checkbox" value="${escapeHtml(c)}" checked> ${escapeHtml(c)}</label>`).join("");
+  $("outlierColumns").innerHTML = nums.map(c=>`<label><input type="checkbox" value="${escapeHtml(c)}" checked> ${escapeHtml(c)}</label>`).join("");
+  $("visibleColumns").innerHTML = state.columns.map(c=>`<label><input type="checkbox" value="${escapeHtml(c)}" checked> ${escapeHtml(c)}</label>`).join("");
+  $("corrColumns").querySelectorAll("input").forEach(i=>i.addEventListener("change",renderCorrelation));
+  $("visibleColumns").querySelectorAll("input").forEach(i=>i.addEventListener("change",()=>{state.page=1;renderDataTable();}));
+}
+
+function renderDistribution() {
+  if (!state.columns.length) return;
+  const c = $("distColumn").value || state.columns[0];
+  const meta = state.metadata.find(m=>m.column===c);
+  if (!meta) return;
+
+  if (meta.type === "Numérica") {
+    $("binsBlock").classList.remove("hidden"); $("groupBlock").classList.remove("hidden"); $("boxChart").classList.remove("hidden");
+    const vals = state.filteredData.map(r=>coerceNumber(r[c])).filter(Number.isFinite);
+    Plotly.newPlot("distChart", [{type:"histogram", x:vals, nbinsx:Number($("bins").value)||20}],
+      {title:`Histograma: ${c}`, margin:{t:50}}, {responsive:true,displaylogo:false});
+    const group = $("boxGroup").value;
+    if (group) {
+      const traces = [...new Set(state.filteredData.map(r=>isMissing(r[group])?"(Faltante)":String(r[group])))].slice(0,30).map(g=>({
+        type:"box", name:g, y:state.filteredData.filter(r=>(isMissing(r[group])?"(Faltante)":String(r[group]))===g).map(r=>coerceNumber(r[c])).filter(Number.isFinite), boxpoints:"outliers"
+      }));
+      Plotly.newPlot("boxChart", traces, {title:`Boxplot de ${c} por ${group}`}, {responsive:true,displaylogo:false});
+    } else {
+      Plotly.newPlot("boxChart", [{type:"box",y:vals,name:c,boxpoints:"outliers"}], {title:`Diagrama de caja: ${c}`}, {responsive:true,displaylogo:false});
+    }
+  } else {
+    $("binsBlock").classList.add("hidden"); $("groupBlock").classList.add("hidden"); $("boxChart").classList.add("hidden");
+    const counts = {};
+    state.filteredData.forEach(r=>{const k=isMissing(r[c])?"(Faltante)":String(r[c]);counts[k]=(counts[k]||0)+1;});
+    const top = Object.entries(counts).sort((a,b)=>b[1]-a[1]).slice(0,30);
+    Plotly.newPlot("distChart", [{type:"bar",x:top.map(x=>x[0]),y:top.map(x=>x[1])}],
+      {title:`Frecuencias: ${c}${Object.keys(counts).length>30?" (30 categorías más frecuentes)":""}`,margin:{t:50,b:120}}, {responsive:true,displaylogo:false});
+  }
+}
+
+function pairedValues(a,b) {
+  const outA=[], outB=[];
+  for (const r of state.filteredData) {
+    const x=coerceNumber(r[a]), y=coerceNumber(r[b]);
+    if (Number.isFinite(x)&&Number.isFinite(y)){outA.push(x);outB.push(y);}
+  }
+  return [outA,outB];
+}
+function pearson(a,b) {
+  if (a.length < 2 || b.length !== a.length) return NaN;
+  const ma=mean(a), mb=mean(b);
+  let num=0, da=0, db=0;
+  for(let i=0;i<a.length;i++){const x=a[i]-ma,y=b[i]-mb;num+=x*y;da+=x*x;db+=y*y;}
+  return da && db ? num/Math.sqrt(da*db) : NaN;
+}
+function ranks(a) {
+  const indexed=a.map((v,i)=>({v,i})).sort((x,y)=>x.v-y.v);
+  const r=Array(a.length); let i=0;
+  while(i<indexed.length){
+    let j=i; while(j+1<indexed.length && indexed[j+1].v===indexed[i].v) j++;
+    const rank=(i+j+2)/2;
+    for(let k=i;k<=j;k++) r[indexed[k].i]=rank;
+    i=j+1;
+  }
+  return r;
+}
+function renderCorrelation() {
+  const selected=[...$("corrColumns").querySelectorAll("input:checked")].map(i=>i.value);
+  if (selected.length<2) {
+    $("corrChart").innerHTML="<div class='notice warn'>Selecciona al menos dos variables numéricas.</div>";
+    $("corrTable").innerHTML="";
+    return;
+  }
+  const method=$("corrMethod").value;
+  const matrix=selected.map(a=>selected.map(b=>{
+    const [x,y]=pairedValues(a,b);
+    return method==="spearman" ? pearson(ranks(x),ranks(y)) : pearson(x,y);
+  }));
+  Plotly.newPlot("corrChart", [{
+    type:"heatmap",z:matrix,x:selected,y:selected,zmin:-1,zmax:1,colorscale:"RdBu",reversescale:true,
+    text:matrix.map(r=>r.map(v=>Number.isFinite(v)?v.toFixed(2):"NA")),texttemplate:"%{text}",hovertemplate:"%{x} vs %{y}: %{z:.3f}<extra></extra>"
+  }], {title:`Correlación ${method==="spearman"?"Spearman":"Pearson"}`,margin:{t:50,l:100,b:100}}, {responsive:true,displaylogo:false});
+  renderTable($("corrTable"),["Variable",...selected],selected.map((c,i)=>[c,...matrix[i].map(v=>Number.isFinite(v)?v.toFixed(4):"")]));
+}
+
+function calculateOutliers() {
+  const cols=[...$("outlierColumns").querySelectorAll("input:checked")].map(i=>i.value);
+  const factor=Number($("iqrFactor").value);
+  const res=[];
+  for(const c of cols){
+    const values=state.filteredData.map(r=>coerceNumber(r[c])).filter(Number.isFinite);
+    if(!values.length) continue;
+    const q1=quantile(values,.25),q3=quantile(values,.75),iqr=q3-q1,lo=q1-factor*iqr,hi=q3+factor*iqr;
+    state.filteredData.forEach(r=>{
+      const v=coerceNumber(r[c]);
+      if(Number.isFinite(v)&&(v<lo||v>hi)){
+        const originalIndex=state.originalData.indexOf(r);
+        res.push({fila_original:originalIndex>=0?originalIndex+2:"",variable:c,valor:v,limite_inferior:lo,limite_superior:hi});
+      }
+    });
+  }
+  state.outliers=res;
+  renderOutliers();
+}
+function renderOutliers() {
+  const res=state.outliers;
+  const uniqueRows=new Set(res.map(x=>x.fila_original)).size;
+  $("outlierSummary").textContent=`Detecciones: ${res.length.toLocaleString("es-CO")} · Filas afectadas: ${uniqueRows.toLocaleString("es-CO")}`;
+  const counts={}; res.forEach(x=>counts[x.variable]=(counts[x.variable]||0)+1);
+  Plotly.newPlot("outlierChart", [{type:"bar",x:Object.keys(counts),y:Object.values(counts)}], {title:"Cantidad de atípicos por variable"}, {responsive:true,displaylogo:false});
+  renderTable($("outlierTable"),["Fila original","Variable","Valor","Límite inferior","Límite superior"],
+    res.slice(0,3000).map(x=>[x.fila_original,x.variable,fmt(x.valor),fmt(x.limite_inferior),fmt(x.limite_superior)]));
+}
+
+function getVisibleColumns() {
+  const checks=[...$("visibleColumns").querySelectorAll("input:checked")];
+  return checks.length ? checks.map(i=>i.value) : [];
+}
+function renderDataTable() {
+  const visible=getVisibleColumns();
+  if (!visible.length) {
+    $("dataTable").innerHTML="";
+    $("tableCount").textContent="Selecciona al menos una columna.";
+    return;
+  }
+  const query=$("searchData").value.trim().toLowerCase();
+  let rows=state.filteredData.filter(r=>!query || visible.some(c=>String(r[c]??"").toLowerCase().includes(query)));
+  if (state.sort.column) {
+    const c=state.sort.column, dir=state.sort.dir;
+    rows=rows.slice().sort((a,b)=>{
+      const av=a[c],bv=b[c];
+      const an=coerceNumber(av),bn=coerceNumber(bv);
+      if(Number.isFinite(an)&&Number.isFinite(bn)) return dir*(an-bn);
+      return dir*String(av??"").localeCompare(String(bv??""),"es",{numeric:true});
+    });
+  }
+  state.pageSize=Number($("pageSize").value)||50;
+  const pages=Math.max(1,Math.ceil(rows.length/state.pageSize));
+  if(state.page>pages) state.page=pages;
+  const start=(state.page-1)*state.pageSize;
+  const pageRows=rows.slice(start,start+state.pageSize);
+  renderTable($("dataTable"),visible,pageRows.map(r=>visible.map(c=>r[c])),true);
+  $("tableCount").textContent=`${rows.length.toLocaleString("es-CO")} registros`;
+  $("pageInfo").textContent=`Página ${state.page} de ${pages}`;
+  $("prevPage").disabled=state.page<=1; $("nextPage").disabled=state.page>=pages;
+}
+
+function renderTable(el, headers, rows, sortable=false) {
+  el.innerHTML = `<thead><tr>${headers.map(h=>`<th ${sortable?`data-sort="${escapeHtml(h)}" style="cursor:pointer"`:""}>${escapeHtml(h)}</th>`).join("")}</tr></thead>
+    <tbody>${rows.map(r=>`<tr>${r.map(v=>`<td>${escapeHtml(formatCell(v))}</td>`).join("")}</tr>`).join("")}</tbody>`;
+  if (sortable) {
+    el.querySelectorAll("th[data-sort]").forEach(th=>th.addEventListener("click",()=>{
+      const c=th.getAttribute("data-sort");
+      if(state.sort.column===c) state.sort.dir*=-1; else state.sort={column:c,dir:1};
+      renderDataTable();
+    }));
+  }
+}
+function formatCell(v) {
+  if (isMissing(v)) return "";
+  if (v instanceof Date) return v.toLocaleString("es-CO");
+  return v;
+}
+
+function resetFilters() {
+  state.filteredData=[...state.originalData];
+  state.filters={}; state.page=1; state.outliers=[];
+  buildFilters(); renderAll();
+}
+
+$("dropzone").addEventListener("click",()=>$("fileInput").click());
+$("dropzone").addEventListener("keydown",e=>{if(e.key==="Enter"||e.key===" ") $("fileInput").click();});
+$("fileInput").addEventListener("change",e=>loadFile(e.target.files[0]));
+["dragenter","dragover"].forEach(ev=>$("dropzone").addEventListener(ev,e=>{e.preventDefault();$("dropzone").classList.add("drag");}));
+["dragleave","drop"].forEach(ev=>$("dropzone").addEventListener(ev,e=>{e.preventDefault();$("dropzone").classList.remove("drag");}));
+$("dropzone").addEventListener("drop",e=>loadFile(e.dataTransfer.files[0]));
+$("sheetSelect").addEventListener("change",e=>loadSheet(e.target.value));
+$("resetFilters").addEventListener("click",resetFilters);
+
+document.querySelectorAll(".tab-btn").forEach(btn=>btn.addEventListener("click",()=>{
+  document.querySelectorAll(".tab-btn").forEach(b=>b.classList.remove("active"));
+  document.querySelectorAll(".tab-panel").forEach(p=>p.classList.remove("active"));
+  btn.classList.add("active"); $(btn.dataset.tab).classList.add("active");
+  setTimeout(()=>window.dispatchEvent(new Event("resize")),50);
+}));
+
+$("statsMode").addEventListener("change",renderStats);
+$("distColumn").addEventListener("change",renderDistribution);
+$("bins").addEventListener("change",renderDistribution);
+$("boxGroup").addEventListener("change",renderDistribution);
+$("corrMethod").addEventListener("change",renderCorrelation);
+$("runOutliers").addEventListener("click",calculateOutliers);
+$("searchData").addEventListener("input",()=>{state.page=1;renderDataTable();});
+$("pageSize").addEventListener("change",()=>{state.page=1;renderDataTable();});
+$("prevPage").addEventListener("click",()=>{if(state.page>1){state.page--;renderDataTable();}});
+$("nextPage").addEventListener("click",()=>{state.page++;renderDataTable();});
+$("downloadFiltered").addEventListener("click",()=>downloadText(rowsToCsv(state.filteredData,state.columns),"datos_filtrados.csv"));
+$("downloadOutliers").addEventListener("click",()=>{
+  const cols=["fila_original","variable","valor","limite_inferior","limite_superior"];
+  downloadText(rowsToCsv(state.outliers,cols),"valores_atipicos.csv");
+});
+</script>
+</body>
+</html>
